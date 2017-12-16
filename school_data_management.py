@@ -1,5 +1,6 @@
 import unicodecsv
 from datetime import datetime as dt
+from collections import defaultdict
 import numpy as np
 import pprint
 import matplotlib.pyplot as plt
@@ -7,14 +8,13 @@ import matplotlib.pyplot as plt
 pp = pprint.PrettyPrinter()
 
 
-
-
-
+#getting required files
 engagement_filename='/Users/qureshi/Documents/workspace/Udacity/practice1/daily_engagement.csv'
 enrollment_filename='/Users/qureshi/Documents/workspace/Udacity/practice1/enrollments.csv'
 submission_filename='/Users/qureshi/Documents/workspace/Udacity/practice1/project_submissions.csv'
 
 
+#funtion to read files
 def read_csv(a):
     with open (a, 'rb') as f:
         reader = unicodecsv.DictReader(f)
@@ -25,6 +25,7 @@ def read_csv(a):
 enrollments = read_csv(enrollment_filename)
 engagements = read_csv(engagement_filename)
 submissions = read_csv(submission_filename)
+
 
 # correcting data types
 def parse_date(date):
@@ -38,7 +39,9 @@ def parse_maybe_int(i):
         return None
     else:
         return int(i)
-#print (submissions)
+
+
+
 # clean up for enrollments
 for enrollment in enrollments:
     enrollment['join_date']= parse_date(enrollment['join_date'])
@@ -62,8 +65,7 @@ for submission in submissions:
 
 
 
-
-#function for finding total number of rows
+#function for finding total number of lines in file
 def total_rows(a):
     return len(a)+1
 
@@ -71,7 +73,6 @@ enrollment_num_rows= total_rows(enrollments)
 engagement_num_rows= total_rows(engagements)
 submission_num_rows= total_rows(submissions)
 print("total no. of rows in csv files,enrolled ={}, engaged ={}, submitted ={} ".format(enrollment_num_rows,engagement_num_rows,submission_num_rows))
-
 
 
 #function for replacing undesired key names
@@ -99,6 +100,7 @@ unique_project_submitters = get_unique_students(submissions)
 print("length of unique students, enrolled ={}, engaged ={}, submitted ={}".format(len(unique_enrolled_students), len(unique_engagement_students), len(unique_project_submitters)))
 
 
+
 # Create a set of the account keys for all test accounts
 udacity_test_accounts = set()
 for enrollment in enrollments:
@@ -110,7 +112,7 @@ print('no. of test accounts',len(udacity_test_accounts)) # mistake, ask zaid
 
 
 # Given some data with an account_key field, removes any records corresponding to test accounts
-def remove_udacity_accounts(data):
+def remove_test_accounts(data):
     non_udacity_data = []
     for data_point in data:
         if data_point['account_key'] not in udacity_test_accounts:
@@ -118,27 +120,26 @@ def remove_udacity_accounts(data):
     return non_udacity_data
 
 
-# Remove Udacity test accounts from all three tables
-non_udacity_enrollments = remove_udacity_accounts(enrollments)
-non_udacity_engagements = remove_udacity_accounts(engagements)
-non_udacity_submissions = remove_udacity_accounts(submissions)
+# Remove test accounts from all three tables
+without_test_acc_enrollments = remove_test_accounts(enrollments)
+without_test_acc_engagements = remove_test_accounts(engagements)
+without_test_acc_submissions = remove_test_accounts(submissions)
 
-print ('non_udacity_enrollments =',len(non_udacity_enrollments))
-print ('non_udacity_engagements =',len(non_udacity_engagements))
-print ('non_udacity_submissions =',len(non_udacity_submissions))
+print ('without_test_acc_enrollments =',len(without_test_acc_enrollments))
+print ('without_test_acc_engagements =',len(without_test_acc_engagements))
+print ('without_test_acc_submissions =',len(without_test_acc_submissions))
 
 
-
+#calculating students who paid there fees,(refund was available only within a week of payment)
+#So we can find this by students who have cancelled after 7 days or who are currently active
 paid_students = {}
-for enrollment in non_udacity_enrollments:
+for enrollment in without_test_acc_enrollments:
     if (not enrollment['is_canceled'] or enrollment['days_to_cancel'] > 7):
         account_key = enrollment['account_key']
         join_date = enrollment['join_date']
         if (account_key not in paid_students or join_date > paid_students[account_key]):
             paid_students[account_key] = join_date
 print('no. of paid students =', len(paid_students))
-
-
 
 
 def within_one_week(join_date, engagement_date):
@@ -152,12 +153,19 @@ def remove_free_trial_cancels(data):
             new_data.append(data_point)
     return new_data
 
-paid_enrollments = remove_free_trial_cancels(non_udacity_enrollments)
-paid_engagements = remove_free_trial_cancels(non_udacity_engagements)
-paid_submissions = remove_free_trial_cancels(non_udacity_submissions)
-
+paid_enrollments = remove_free_trial_cancels(without_test_acc_enrollments)
+paid_engagements = remove_free_trial_cancels(without_test_acc_engagements)
+paid_submissions = remove_free_trial_cancels(without_test_acc_submissions)
 #pp.pprint(paid_engagements)
 
+print ("paid enrollments = {}".format(len(paid_enrollments)))
+print ("paid engagements = {}".format(len(paid_engagements)))
+print ("paid submissions = {}".format(len(paid_submissions)))
+
+
+
+#added a field to get information about attendance per student
+#will be summarised in the later completion_date
 for v in paid_engagements:
     if v['num_courses_visited']>0:
         v['has_visited']=1
@@ -165,10 +173,8 @@ for v in paid_engagements:
         v['has_visited']=0
 #pp.pprint(paid_engagements[0])
 
-print ("paid enrollments = {}".format(len(paid_enrollments)))
-print ("paid engagements = {}".format(len(paid_engagements)))
-print ("paid submissions = {}".format(len(paid_submissions)))
 
+#arranging record of students who paid fees within first week
 paid_engagement_in_first_week = []
 for engagement_record in paid_engagements:
     account_key = engagement_record['account_key']
@@ -182,19 +188,16 @@ print("paid engagements in first week = {}".format(len(paid_engagement_in_first_
 #print(paid_engagement_in_first_week)
 
 
-from collections import defaultdict
-
-# Create a dictionary of engagement grouped by student.
+# dictionary of engagement grouped by student.
 # The keys are account keys, and the values are lists of engagement records.
 engagement_by_account = defaultdict(list)
 for engagement_record in paid_engagement_in_first_week:
     account_key = engagement_record['account_key']
     engagement_by_account[account_key].append(engagement_record)
-
-
-
 #pp.pprint(engagement_by_account)
 
+
+# fuction to get any data value from dictinary
 def group_data(dict,value):
     total_data_by_account={}
     for account_key, engagement_for_student in dict.items():
@@ -213,6 +216,7 @@ def create_list_from_byAccountDict(a):
         data.append(x)
     return data
 
+#getting statistics for different type of students
 def describe_data(list):
     print ('Mean:', np.mean(list))
     print ('Standard deviation:', np.std(list))
@@ -220,11 +224,12 @@ def describe_data(list):
     print ('Maximum:', np.max(list))
 
 
-# Create a dictionary with the total minutes each student spent in the classroom during the first week.
-# The keys are account keys, and the values are numbers (total minutes)
-#total_minutes_by_account = {}
-total_minutes_by_account = group_data(engagement_by_account,'total_minutes_visited')
+
+# a dictionary with the total minutes each student spent in the classroom during the first week.
+# The keys are account keys, and the values are total minutes
 # Summarize the data about minutes spent in the classroom
+
+total_minutes_by_account = group_data(engagement_by_account,'total_minutes_visited')
 total_minutes = create_list_from_byAccountDict(total_minutes_by_account)
 describe_data(total_minutes)
 
@@ -253,10 +258,8 @@ describe_data(total_visits)
 
 
 
-passing_engagement = []
-non_passing_engagement = []
-
-
+#calculating parameters of students who passed first projects
+# lesson key of first project ['746169184' , '3176718735']
 subway_passed = set()
 req_lesson = ['746169184' , '3176718735']
 for data in paid_submissions:
@@ -268,6 +271,10 @@ for data in paid_submissions:
 print(len(subway_passed))
 #print(subway_passed)
 
+
+
+passing_engagement = []
+non_passing_engagement = []
 for engagement in paid_engagement_in_first_week:
     if engagement['account_key'] in subway_passed:
         passing_engagement.append(engagement_by_account[engagement['account_key']])
@@ -275,12 +282,11 @@ for engagement in paid_engagement_in_first_week:
         a = data['account_key']
         non_passing_engagement.append(engagement_by_account[engagement['account_key']])
 
-
 print(len(engagement_by_account))
 print(len(passing_engagement),len(non_passing_engagement))
 
-# lesson_completed_passing_students = {}
-# lesson_completed_non_passing_students = {}
+
+#differentiating the data with students passed and non passed
 lesson_completed_passing_students = []
 lesson_completed_non_passing_students = []
 
@@ -295,6 +301,7 @@ describe_data(lesson_completed_passing_students)
 describe_data(lesson_completed_non_passing_students)
 
 
+#visuals of one parameter, you can do as many you want
 plt.hist(lesson_completed_passing_students)
 plt.hist(lesson_completed_non_passing_students)
 plt.show()
